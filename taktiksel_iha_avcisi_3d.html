@@ -1,0 +1,1868 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, minimum-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+<title>Taktiksel İHA Avcısı 3D</title>
+<style>
+  :root {
+    --hud-green: #38f28c;
+    --hud-amber: #ffb84d;
+    --hud-red: #ff4d5a;
+    --hud-cyan: #4de8ff;
+    --hud-bg: rgba(8, 16, 20, 0.76);
+    --hud-border: rgba(56, 242, 140, 0.35);
+    --btn-size: clamp(58px, 8vh, 68px);
+    --top-btn-h: clamp(32px, 4.4vh, 38px);
+    --top-btn-w: clamp(82px, 11vw, 106px);
+    --safe-top: env(safe-area-inset-top, 0px);
+    --safe-bottom: env(safe-area-inset-bottom, 0px);
+    --safe-left: env(safe-area-inset-left, 0px);
+    --safe-right: env(safe-area-inset-right, 0px);
+  }
+
+  *, *::before, *::after {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+    user-select: none !important;
+    -webkit-user-select: none !important;
+    -moz-user-select: none !important;
+    -ms-user-select: none !important;
+    -webkit-touch-callout: none !important;
+    -webkit-tap-highlight-color: transparent !important;
+    font-family: 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  }
+
+  html, body {
+    position: fixed;
+    inset: 0;
+    width: 100vw;
+    height: 100vh;
+    height: 100dvh;
+    overflow: hidden;
+    overscroll-behavior: none;
+    background: #070d11;
+    color: #e6fff2;
+    touch-action: none;
+  }
+
+  #game-canvas {
+    position: fixed;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    display: block;
+    z-index: 1;
+    touch-action: none;
+  }
+
+  /* Signal Static Noise Overlay */
+  #static-overlay {
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: 4;
+    opacity: 0;
+    background-image: repeating-linear-gradient(
+      0deg,
+      rgba(255,255,255,0.12) 0px,
+      rgba(0,0,0,0.22) 2px,
+      transparent 4px
+    );
+    mix-blend-mode: screen;
+    transition: opacity 0.12s linear;
+  }
+
+  /* Thermal Vignette Overlay */
+  #thermal-overlay {
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: 3;
+    opacity: 0;
+    background: radial-gradient(circle at center, transparent 52%, rgba(0, 12, 35, 0.72) 100%);
+    transition: opacity 0.2s ease;
+  }
+  body.thermal-active #thermal-overlay {
+    opacity: 1;
+  }
+
+  /* Scope / Aiming Reticle Overlay */
+  #scope-overlay {
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: 5;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    background: radial-gradient(circle at center, transparent 34%, rgba(3, 8, 12, 0.86) 66%);
+  }
+  body.scope-active #scope-overlay {
+    display: flex;
+  }
+
+  .reticle-ring {
+    position: relative;
+    width: min(52vmin, 320px);
+    height: min(52vmin, 320px);
+    border: 1.5px solid rgba(56, 242, 140, 0.65);
+    border-radius: 50%;
+    box-shadow: 0 0 18px rgba(56, 242, 140, 0.2), inset 0 0 18px rgba(56, 242, 140, 0.12);
+  }
+  .reticle-cross-h {
+    position: absolute;
+    top: 50%;
+    left: -14%;
+    right: -14%;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, rgba(56,242,140,0.85) 25%, transparent 46%, transparent 54%, rgba(56,242,140,0.85) 75%, transparent);
+  }
+  .reticle-cross-v {
+    position: absolute;
+    left: 50%;
+    top: -14%;
+    bottom: -14%;
+    width: 1px;
+    background: linear-gradient(180deg, transparent, rgba(56,242,140,0.85) 25%, transparent 46%, transparent 54%, rgba(56,242,140,0.85) 75%, transparent);
+  }
+  .reticle-dot {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 6px;
+    height: 6px;
+    transform: translate(-50%, -50%);
+    border-radius: 50%;
+    background: #ff4d5a;
+    box-shadow: 0 0 8px #ff4d5a;
+  }
+  .reticle-data {
+    position: absolute;
+    bottom: -30px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 1px;
+    color: var(--hud-green);
+    background: rgba(5, 12, 16, 0.85);
+    padding: 3px 10px;
+    border-radius: 4px;
+    border: 1px solid var(--hud-border);
+    white-space: nowrap;
+  }
+
+  /* Subtle Center Crosshair for non-scope modes */
+  #hip-crosshair {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    width: 18px;
+    height: 18px;
+    transform: translate(-50%, -50%);
+    pointer-events: none;
+    z-index: 5;
+  }
+  body.scope-active #hip-crosshair {
+    display: none;
+  }
+  #hip-crosshair::before, #hip-crosshair::after {
+    content: '';
+    position: absolute;
+    background: rgba(56, 242, 140, 0.7);
+  }
+  #hip-crosshair::before { top: 8px; left: 0; right: 0; height: 2px; }
+  #hip-crosshair::after { left: 8px; top: 0; bottom: 0; width: 2px; }
+
+  /* HUD Layer */
+  #hud {
+    position: fixed;
+    inset: 0;
+    z-index: 10;
+    pointer-events: none;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    padding: max(10px, var(--safe-top)) max(12px, var(--safe-right)) max(12px, var(--safe-bottom)) max(12px, var(--safe-left));
+  }
+
+  /* Top Bar */
+  .top-bar {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+
+  .telemetry-panel {
+    display: flex;
+    align-items: center;
+    gap: clamp(8px, 1.5vw, 16px);
+    background: var(--hud-bg);
+    border: 1px solid var(--hud-border);
+    backdrop-filter: blur(6px);
+    padding: 6px 12px;
+    border-radius: 8px;
+    pointer-events: auto;
+  }
+
+  .stat-box {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 56px;
+  }
+  .stat-label {
+    font-size: 9px;
+    letter-spacing: 0.8px;
+    color: #8ab8a0;
+    font-weight: 700;
+  }
+  .stat-val {
+    font-size: clamp(12px, 1.7vw, 14px);
+    font-weight: 800;
+    color: var(--hud-green);
+    font-variant-numeric: tabular-nums;
+  }
+  .bar-track {
+    width: 100%;
+    height: 4px;
+    background: rgba(255,255,255,0.12);
+    border-radius: 2px;
+    overflow: hidden;
+  }
+  .bar-fill {
+    height: 100%;
+    width: 100%;
+    background: var(--hud-green);
+    transition: width 0.15s ease, background-color 0.2s ease;
+  }
+
+  /* Top Right Uniform Action Buttons */
+  .top-actions {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    pointer-events: auto;
+  }
+
+  .uniform-top-btn {
+    width: var(--top-btn-w);
+    height: var(--top-btn-h);
+    background: var(--hud-bg);
+    border: 1px solid var(--hud-border);
+    color: #e6fff2;
+    border-radius: 7px;
+    font-size: clamp(10px, 1.3vw, 12px);
+    font-weight: 700;
+    letter-spacing: 0.4px;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    backdrop-filter: blur(6px);
+    transition: background 0.15s, border-color 0.15s, transform 0.08s;
+  }
+  .uniform-top-btn:hover {
+    background: rgba(56, 242, 140, 0.18);
+    border-color: var(--hud-green);
+  }
+  .uniform-top-btn:active {
+    transform: scale(0.96);
+  }
+  .uniform-top-btn.active {
+    background: rgba(56, 242, 140, 0.26);
+    border-color: var(--hud-green);
+    color: var(--hud-green);
+  }
+
+  /* Warning Banner */
+  #warning-banner {
+    position: fixed;
+    top: 64px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 12;
+    background: rgba(180, 20, 35, 0.88);
+    border: 1px solid #ff808b;
+    color: #fff;
+    padding: 6px 16px;
+    border-radius: 6px;
+    font-size: 12px;
+    font-weight: 800;
+    letter-spacing: 0.8px;
+    display: none;
+    text-align: center;
+    box-shadow: 0 4px 16px rgba(255, 40, 60, 0.4);
+    animation: pulseWarn 0.8s infinite alternate;
+  }
+  @keyframes pulseWarn {
+    from { opacity: 0.78; transform: translateX(-50%) scale(0.98); }
+    to { opacity: 1; transform: translateX(-50%) scale(1.02); }
+  }
+
+  /* Kill / Event Toast */
+  #toast-feed {
+    position: fixed;
+    top: 102px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 11;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    pointer-events: none;
+  }
+  .toast-item {
+    background: rgba(8, 22, 16, 0.88);
+    border: 1px solid var(--hud-green);
+    color: var(--hud-green);
+    padding: 4px 12px;
+    border-radius: 5px;
+    font-size: 12px;
+    font-weight: 700;
+    animation: fadeUp 2.2s forwards;
+  }
+  @keyframes fadeUp {
+    0% { opacity: 0; transform: translateY(8px); }
+    15% { opacity: 1; transform: translateY(0); }
+    80% { opacity: 1; }
+    100% { opacity: 0; transform: translateY(-10px); }
+  }
+
+  /* Bottom Controls Zone */
+  .bottom-zone {
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    width: 100%;
+    position: relative;
+  }
+
+  /* Zoom Selector: ONLY visible when scope/aiming mode is active, placed cleanly above bottom edge */
+  #zoom-panel {
+    position: fixed;
+    top: max(62px, calc(var(--safe-top) + 52px));
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 15;
+    display: none;
+    align-items: center;
+    gap: 8px;
+    background: var(--hud-bg);
+    border: 1px solid var(--hud-border);
+    backdrop-filter: blur(8px);
+    padding: 5px 12px;
+    border-radius: 10px;
+    pointer-events: auto;
+  }
+  body.scope-active #zoom-panel {
+    display: flex;
+  }
+
+  .zoom-step-btn {
+    width: 34px;
+    height: 34px;
+    border-radius: 7px;
+    border: 1px solid var(--hud-border);
+    background: rgba(56, 242, 140, 0.16);
+    color: var(--hud-green);
+    font-size: 18px;
+    font-weight: 800;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .zoom-step-btn:active {
+    background: rgba(56, 242, 140, 0.35);
+  }
+  #zoom-slider {
+    width: clamp(100px, 24vw, 180px);
+    accent-color: var(--hud-green);
+    cursor: pointer;
+    height: 6px;
+  }
+  #zoom-readout {
+    min-width: 44px;
+    text-align: center;
+    font-size: 12px;
+    font-weight: 800;
+    color: var(--hud-green);
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* Mobile Joysticks */
+  .joystick-wrap {
+    display: none;
+    pointer-events: auto;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+  }
+  body.mobile-mode .joystick-wrap {
+    display: flex;
+  }
+
+  .joy-base {
+    width: clamp(104px, 14.5vw, 126px);
+    height: clamp(104px, 14.5vw, 126px);
+    border-radius: 50%;
+    background: rgba(10, 22, 26, 0.58);
+    border: 2px solid rgba(56, 242, 140, 0.38);
+    position: relative;
+    touch-action: none;
+  }
+  .joy-knob {
+    width: 44px;
+    height: 44px;
+    border-radius: 50%;
+    background: radial-gradient(circle at 35% 35%, #5effa8, #1f9e5b);
+    border: 2px solid #c9ffe2;
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    box-shadow: 0 2px 10px rgba(0,0,0,0.5);
+    pointer-events: none;
+  }
+  .joy-label {
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: 0.6px;
+    color: rgba(200, 245, 220, 0.8);
+  }
+
+  /* ERGONOMIC NON-OVERLAPPING COMBAT LAYOUT */
+  /* Left-side secondary tactile buttons (Termal & Turbo) on mobile so right thumb has clean dedicated space */
+  .left-side-cluster {
+    display: flex;
+    align-items: flex-end;
+    gap: 14px;
+  }
+
+  .secondary-pad {
+    pointer-events: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .right-controls-cluster {
+    display: flex;
+    align-items: flex-end;
+    gap: 18px;
+  }
+
+  /* Dedicated Ergonomic Arc/Staggered Pad for NİŞAN & ATEŞ (Zero overlap, generous gap) */
+  .primary-combat-pad {
+    pointer-events: auto;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 14px;
+    padding-bottom: 4px;
+  }
+
+  .uniform-action-btn {
+    width: var(--btn-size);
+    height: var(--btn-size);
+    border-radius: 16px;
+    border: 1.5px solid var(--hud-border);
+    background: rgba(10, 22, 26, 0.82);
+    backdrop-filter: blur(6px);
+    color: #e6fff2;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 2px;
+    cursor: pointer;
+    font-size: 10px;
+    font-weight: 800;
+    letter-spacing: 0.4px;
+    box-shadow: 0 6px 16px rgba(0,0,0,0.48);
+    transition: transform 0.08s, background 0.15s, border-color 0.15s;
+    touch-action: none;
+  }
+  .uniform-action-btn span.ico {
+    font-size: 20px;
+    line-height: 1;
+    pointer-events: none;
+  }
+  .uniform-action-btn span:last-child {
+    pointer-events: none;
+  }
+  .uniform-action-btn:active {
+    transform: scale(0.93);
+  }
+
+  /* Offset NİŞAN slightly inward and above ATEŞ for natural thumb arc */
+  .btn-aim {
+    margin-right: 16px;
+  }
+  .btn-aim.active {
+    background: rgba(56, 242, 140, 0.34);
+    border-color: var(--hud-green);
+    color: var(--hud-green);
+    box-shadow: 0 0 18px rgba(56, 242, 140, 0.35);
+  }
+
+  .btn-fire {
+    border-color: rgba(255, 77, 90, 0.78);
+    background: rgba(82, 15, 24, 0.86);
+    color: #ffd6da;
+  }
+  .btn-fire:active, .btn-fire.firing {
+    background: rgba(235, 45, 62, 0.9);
+    border-color: #ff9aa2;
+    box-shadow: 0 0 20px rgba(255, 77, 90, 0.55);
+  }
+
+  .btn-thermal.active {
+    background: rgba(77, 232, 255, 0.3);
+    border-color: var(--hud-cyan);
+    color: var(--hud-cyan);
+  }
+
+  /* PC Hint Strip */
+  #pc-hints {
+    position: fixed;
+    bottom: 10px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 9;
+    font-size: 11px;
+    color: rgba(210, 245, 225, 0.8);
+    background: rgba(8, 16, 20, 0.72);
+    border: 1px solid rgba(56, 242, 140, 0.25);
+    padding: 5px 12px;
+    border-radius: 6px;
+    pointer-events: none;
+    white-space: nowrap;
+  }
+  body.mobile-mode #pc-hints {
+    display: none;
+  }
+
+  /* Modals (Start Screen & Hangar) */
+  .modal-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 30;
+    background: rgba(4, 10, 14, 0.84);
+    backdrop-filter: blur(8px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 16px;
+  }
+  .modal-card {
+    width: min(680px, 100%);
+    max-height: 90dvh;
+    overflow-y: auto;
+    background: #0b161c;
+    border: 1px solid var(--hud-border);
+    border-radius: 14px;
+    padding: clamp(16px, 3vw, 26px);
+    box-shadow: 0 20px 50px rgba(0,0,0,0.75);
+  }
+  .modal-title {
+    font-size: clamp(20px, 3.2vw, 28px);
+    font-weight: 900;
+    color: var(--hud-green);
+    letter-spacing: 1px;
+    margin-bottom: 6px;
+  }
+  .modal-sub {
+    font-size: 13px;
+    color: #9dc4b0;
+    margin-bottom: 18px;
+    line-height: 1.45;
+  }
+
+  .mode-select-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+    margin-bottom: 18px;
+  }
+  .mode-card {
+    padding: 12px;
+    border-radius: 10px;
+    border: 1.5px solid rgba(56, 242, 140, 0.25);
+    background: rgba(18, 34, 42, 0.6);
+    cursor: pointer;
+    text-align: center;
+    transition: all 0.15s;
+  }
+  .mode-card.selected {
+    border-color: var(--hud-green);
+    background: rgba(56, 242, 140, 0.16);
+  }
+  .mode-card h4 {
+    font-size: 14px;
+    color: #fff;
+    margin-bottom: 3px;
+  }
+  .mode-card p {
+    font-size: 11px;
+    color: #9dc4b0;
+  }
+
+  .primary-btn {
+    width: 100%;
+    height: 46px;
+    border-radius: 9px;
+    border: none;
+    background: linear-gradient(135deg, #2be37d, #19a85a);
+    color: #04140b;
+    font-size: 15px;
+    font-weight: 900;
+    letter-spacing: 0.8px;
+    cursor: pointer;
+    box-shadow: 0 6px 20px rgba(43, 227, 125, 0.35);
+  }
+  .primary-btn:hover {
+    filter: brightness(1.07);
+  }
+
+  /* Hangar Upgrades Grid */
+  .upgrade-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+    gap: 10px;
+    margin-bottom: 16px;
+  }
+  .upg-item {
+    background: rgba(16, 30, 36, 0.85);
+    border: 1px solid rgba(56, 242, 140, 0.25);
+    border-radius: 10px;
+    padding: 12px;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    gap: 8px;
+  }
+  .upg-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .upg-name {
+    font-size: 13px;
+    font-weight: 800;
+    color: #fff;
+  }
+  .upg-lvl {
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--hud-cyan);
+  }
+  .upg-desc {
+    font-size: 11px;
+    color: #9abfb0;
+  }
+  .upg-buy-btn {
+    height: 36px;
+    border-radius: 7px;
+    border: 1px solid var(--hud-green);
+    background: rgba(56, 242, 140, 0.16);
+    color: var(--hud-green);
+    font-size: 12px;
+    font-weight: 800;
+    cursor: pointer;
+  }
+  .upg-buy-btn:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+    border-color: #556b60;
+    color: #8aa396;
+  }
+
+  @media (max-width: 720px) {
+    :root {
+      --btn-size: 58px;
+      --top-btn-w: 74px;
+      --top-btn-h: 32px;
+    }
+    .telemetry-panel {
+      padding: 5px 8px;
+      gap: 7px;
+    }
+    .stat-box {
+      min-width: 46px;
+    }
+    .right-controls-cluster {
+      gap: 12px;
+    }
+    .btn-aim {
+      margin-right: 12px;
+    }
+  }
+</style>
+</head>
+<body oncontextmenu="return false;" onselectstart="return false;" ondragstart="return false;">
+
+<canvas id="game-canvas"></canvas>
+<div id="thermal-overlay"></div>
+<div id="static-overlay"></div>
+<div id="hip-crosshair"></div>
+
+<!-- Precision Scope Overlay -->
+<div id="scope-overlay">
+  <div class="reticle-ring">
+    <div class="reticle-cross-h"></div>
+    <div class="reticle-cross-v"></div>
+    <div class="reticle-dot"></div>
+    <div class="reticle-data" id="scope-telemetry">MESAFE: --- m | ZOOM: 1.0x</div>
+  </div>
+</div>
+
+<!-- Warning & Toast Feed -->
+<div id="warning-banner">⚠️ SİNYAL ZAYIF! ÜSSE DÖNÜN</div>
+<div id="toast-feed"></div>
+
+<!-- Main HUD -->
+<div id="hud">
+  <div class="top-bar">
+    <div class="telemetry-panel">
+      <div class="stat-box">
+        <span class="stat-label">BATARYA</span>
+        <span class="stat-val" id="val-bat">100%</span>
+        <div class="bar-track"><div class="bar-fill" id="bar-bat"></div></div>
+      </div>
+      <div class="stat-box">
+        <span class="stat-label">SİNYAL</span>
+        <span class="stat-val" id="val-sig">100%</span>
+        <div class="bar-track"><div class="bar-fill" id="bar-sig"></div></div>
+      </div>
+      <div class="stat-box">
+        <span class="stat-label">İRTİFA</span>
+        <span class="stat-val" id="val-alt">25m</span>
+      </div>
+      <div class="stat-box">
+        <span class="stat-label">ÜS MESAFE</span>
+        <span class="stat-val" id="val-dist">0m</span>
+      </div>
+      <div class="stat-box">
+        <span class="stat-label">BAKİYE</span>
+        <span class="stat-val" id="val-credits" style="color:#ffd24d;">150 ₺</span>
+      </div>
+    </div>
+
+    <!-- Uniform Top Buttons -->
+    <div class="top-actions">
+      <button type="button" class="uniform-top-btn" id="btn-cam" title="Kamera Açısı (C)">KAMERA</button>
+      <button type="button" class="uniform-top-btn" id="btn-mode-toggle" title="Kontrol Modu">MOD: PC</button>
+      <button type="button" class="uniform-top-btn" id="btn-base" title="Üsse Dön & Şarj Et (R)">ÜSSE DÖN</button>
+      <button type="button" class="uniform-top-btn" id="btn-hangar" title="Hangar & Geliştirme (H)">HANGAR</button>
+    </div>
+  </div>
+
+  <!-- Zoom Selector: ONLY visible when Scope/Aiming mode is active -->
+  <div id="zoom-panel">
+    <button type="button" class="zoom-step-btn" id="btn-zoom-out" aria-label="Uzaklaştır">−</button>
+    <input type="range" id="zoom-slider" min="1" max="4" step="0.1" value="1" />
+    <button type="button" class="zoom-step-btn" id="btn-zoom-in" aria-label="Yakınlaştır">+</button>
+    <span id="zoom-readout">1.0x</span>
+  </div>
+
+  <!-- Bottom Controls (Ergonomic Separation: Left Joystick + Utility | Right Joystick + Aim/Fire Arc) -->
+  <div class="bottom-zone">
+    <div class="left-side-cluster">
+      <!-- Left Joystick (Mobile) -->
+      <div class="joystick-wrap" id="joy-left-wrap">
+        <div class="joy-base" id="joy-left">
+          <div class="joy-knob" id="knob-left"></div>
+        </div>
+        <span class="joy-label">İLERİ / YÖN</span>
+      </div>
+
+      <!-- Utility Action Buttons (Termal & Turbo) separated from Aim/Fire -->
+      <div class="secondary-pad">
+        <button type="button" class="uniform-action-btn btn-thermal" id="btn-thermal" title="Termal Görüş (T)">
+          <span class="ico">🌡️</span>
+          <span>TERMAL</span>
+        </button>
+        <button type="button" class="uniform-action-btn" id="btn-boost" title="Turbo Hız (Shift)">
+          <span class="ico">⚡</span>
+          <span>TURBO</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- Right Controls Cluster -->
+    <div class="right-controls-cluster">
+      <!-- Right Joystick (Mobile) -->
+      <div class="joystick-wrap" id="joy-right-wrap">
+        <div class="joy-base" id="joy-right">
+          <div class="joy-knob" id="knob-right"></div>
+        </div>
+        <span class="joy-label">İRTİFA / BAKIŞ</span>
+      </div>
+
+      <!-- Ergonomic Staggered Aim & Fire Buttons (Zero overlap) -->
+      <div class="primary-combat-pad">
+        <button type="button" class="uniform-action-btn btn-aim" id="btn-aim" title="Nişan Kamerası (Sağ Tık / F)">
+          <span class="ico">🎯</span>
+          <span>NİŞAN</span>
+        </button>
+        <button type="button" class="uniform-action-btn btn-fire" id="btn-fire" title="Ateş Et (Sol Tık / Boşluk)">
+          <span class="ico">🔥</span>
+          <span>ATEŞ</span>
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="pc-hints">
+  <b>PC:</b> [W/A/S/D] Uçuş • [Q/E] İrtifa • [Fare / ←/→] Bakış • [Sağ Tık / F] Nişan & Zoom • [Sol Tık / Space] Ateş • [T] Termal • [C] Kamera • [H] Hangar
+</div>
+
+<!-- Start Modal -->
+<div class="modal-backdrop" id="start-modal">
+  <div class="modal-card">
+    <div class="modal-title">TAKTİKSEL İHA AVCISI 3D</div>
+    <p class="modal-sub">
+      Dağlık arazide taktiksel dronunu uçur; tavşan, tilki ve dağ geyiklerini avla. Üs kulesinden çok uzaklaşır veya yüksek sırtların arkasına geçersen sinyalin kesilir. Kazandığın <b>₺</b> ile Hangar'dan batarya, anten, silah ve optik zoom geliştir!
+    </p>
+    <div class="mode-select-row">
+      <div class="mode-card selected" id="select-pc">
+        <h4>💻 BİLGİSAYAR MODU</h4>
+        <p>Klavye + Fare kontrolü, tam ekran uçuş</p>
+      </div>
+      <div class="mode-card" id="select-mobile">
+        <h4>📱 MOBİL / DOKUNMATİK</h4>
+        <p>Çift sanal joystick + ergonomik dokunmatik tuşlar</p>
+      </div>
+    </div>
+    <button type="button" class="primary-btn" id="btn-start-game">GÖREVE BAŞLA</button>
+  </div>
+</div>
+
+<!-- Hangar Upgrade Modal -->
+<div class="modal-backdrop" id="hangar-modal" style="display:none;">
+  <div class="modal-card">
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+      <div class="modal-title" style="margin:0;">HANGAR & MODİFİYE</div>
+      <div style="font-size:16px; font-weight:900; color:#ffd24d;" id="hangar-credits">150 ₺</div>
+    </div>
+    <p class="modal-sub">Hangar'a girdiğinde dron üsse döner ve bataryası %100 şarj olur.</p>
+    <div class="upgrade-grid" id="upgrade-list"></div>
+    <button type="button" class="primary-btn" id="btn-close-hangar">UÇUŞA DEVAM ET</button>
+  </div>
+</div>
+
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://unpkg.com/three@0.160.0/build/three.module.js"
+  }
+}
+</script>
+
+<script type="module">
+import * as THREE from 'three';
+
+/* =========================================================
+   0. STRICT VIEWPORT LOCK & ANTI-SELECTION GUARD
+   ========================================================= */
+document.addEventListener('gesturestart', (e) => e.preventDefault(), { passive: false });
+document.addEventListener('gesturechange', (e) => e.preventDefault(), { passive: false });
+document.addEventListener('gestureend', (e) => e.preventDefault(), { passive: false });
+document.addEventListener('selectstart', (e) => e.preventDefault());
+document.addEventListener('dblclick', (e) => e.preventDefault(), { passive: false });
+
+document.addEventListener('touchmove', (e) => {
+  // Allow scrolling only inside modal cards
+  if (!e.target.closest('.modal-card')) {
+    e.preventDefault();
+  }
+}, { passive: false });
+
+/* =========================================================
+   1. GAME STATE & UPGRADES
+   ========================================================= */
+const state = {
+  started: false,
+  paused: false,
+  isMobile: ('ontouchstart' in window) || (navigator.maxTouchPoints > 0) || window.innerWidth < 820,
+  camMode: 0, // 0: 3rd Person Chase, 1: FPV Nose
+  aiming: false,
+  thermal: false,
+  boosting: false,
+  zoom: 1.0,
+  credits: 150,
+  battery: 100,
+  signal: 100,
+  signalLostTimer: 0,
+  fireCooldown: 0,
+  upgrades: {
+    battery: { name: 'Lityum-Sülfür Batarya', desc: 'Uçuş süresini ve enerji verimliliğini artırır.', lvl: 1, max: 5, cost: 100 },
+    antenna: { name: 'Yüksek Kazançlı Anten', desc: 'Maksimum sinyal menzilini ve dağ arkası çekimi güçlendirir.', lvl: 1, max: 5, cost: 110 },
+    motor:   { name: 'Fırçasız Turbo Motor', desc: 'Uçuş hızını ve dağlara tırmanma gücünü artırır.', lvl: 1, max: 5, cost: 100 },
+    weapon:  { name: 'Hassas Dart / Lazer Topu', desc: 'Atış hızı, mermi sürati ve vuruş yarıçapını artırır.', lvl: 1, max: 5, cost: 130 },
+    optics:  { name: 'Değişken Optik Dürbün', desc: 'Nişan kamerası maksimum yakınlaştırma (Zoom) kapasitesini artırır.', lvl: 1, max: 5, cost: 120 }
+  }
+};
+
+function getMaxZoom() {
+  return 2.5 + (state.upgrades.optics.lvl - 1) * 2.25;
+}
+function getMaxSignalRange() {
+  return 340 + (state.upgrades.antenna.lvl - 1) * 140;
+}
+function getDroneSpeed() {
+  return 28 + (state.upgrades.motor.lvl - 1) * 7;
+}
+function getBatteryDrainRate() {
+  return 0.85 / (1 + (state.upgrades.battery.lvl - 1) * 0.28);
+}
+
+/* =========================================================
+   2. THREE.JS SCENE, RENDERER & TERRAIN
+   ========================================================= */
+const canvas = document.getElementById('game-canvas');
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+
+const scene = new THREE.Scene();
+const skyColorNormal = new THREE.Color(0x87b5c9);
+const skyColorThermal = new THREE.Color(0x060b19);
+scene.background = skyColorNormal.clone();
+scene.fog = new THREE.FogExp2(0x87b5c9, 0.0014);
+
+const camera = new THREE.PerspectiveCamera(62, window.innerWidth / window.innerHeight, 0.15, 2200);
+
+// Lights
+const hemiLight = new THREE.HemisphereLight(0xdff4ff, 0x3b5234, 0.85);
+scene.add(hemiLight);
+
+const sunLight = new THREE.DirectionalLight(0xfff5e0, 1.35);
+sunLight.position.set(180, 320, 140);
+sunLight.castShadow = true;
+sunLight.shadow.mapSize.set(1024, 1024);
+sunLight.shadow.camera.near = 10;
+sunLight.shadow.camera.far = 900;
+const dShadow = 260;
+sunLight.shadow.camera.left = -dShadow;
+sunLight.shadow.camera.right = dShadow;
+sunLight.shadow.camera.top = dShadow;
+sunLight.shadow.camera.bottom = -dShadow;
+scene.add(sunLight);
+
+// Deterministic Mountainous Terrain Function
+function getTerrainHeight(x, z) {
+  const distFromBase = Math.hypot(x, z);
+  const baseFlatten = THREE.MathUtils.smoothstep(distFromBase, 18, 65);
+  const h1 = Math.sin(x * 0.009) * Math.cos(z * 0.009) * 42;
+  const h2 = Math.sin(x * 0.022 + 1.3) * Math.sin(z * 0.019) * 18;
+  const h3 = Math.cos((x + z) * 0.045) * 5;
+  const ridge = Math.max(0, (distFromBase - 140) * 0.24) * (0.55 + 0.45 * Math.sin(x * 0.012) * Math.cos(z * 0.012));
+  return Math.max(0, (h1 + h2 + h3 + ridge + 14) * baseFlatten);
+}
+
+const TERRAIN_SIZE = 1800;
+const TERRAIN_SEG = 150;
+const terrainGeo = new THREE.PlaneGeometry(TERRAIN_SIZE, TERRAIN_SIZE, TERRAIN_SEG, TERRAIN_SEG);
+terrainGeo.rotateX(-Math.PI / 2);
+
+const posAttr = terrainGeo.attributes.position;
+const colors = [];
+const cGrass = new THREE.Color(0x3a6b35);
+const cForest = new THREE.Color(0x284d27);
+const cRock = new THREE.Color(0x6b6862);
+const cSnow = new THREE.Color(0xeef4f7);
+
+for (let i = 0; i < posAttr.count; i++) {
+  const x = posAttr.getX(i);
+  const z = posAttr.getZ(i);
+  const y = getTerrainHeight(x, z);
+  posAttr.setY(i, y);
+
+  const col = new THREE.Color();
+  if (y < 18) col.copy(cGrass).lerp(cForest, y / 18);
+  else if (y < 58) col.copy(cForest).lerp(cRock, (y - 18) / 40);
+  else col.copy(cRock).lerp(cSnow, Math.min(1, (y - 58) / 38));
+  colors.push(col.r, col.g, col.b);
+}
+terrainGeo.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+terrainGeo.computeVertexNormals();
+
+const terrainMatNormal = new THREE.MeshStandardMaterial({
+  vertexColors: true,
+  roughness: 0.9,
+  metalness: 0.05
+});
+const terrainMatThermal = new THREE.MeshBasicMaterial({
+  color: 0x101d3b,
+  wireframe: false
+});
+const terrainMesh = new THREE.Mesh(terrainGeo, terrainMatNormal);
+terrainMesh.receiveShadow = true;
+scene.add(terrainMesh);
+
+// Base Station & Signal Tower at (0, 0, 0)
+const baseGroup = new THREE.Group();
+const padMesh = new THREE.Mesh(
+  new THREE.CylinderGeometry(12, 13, 0.6, 24),
+  new THREE.MeshStandardMaterial({ color: 0x2b3338, roughness: 0.7 })
+);
+padMesh.position.y = 0.3;
+padMesh.receiveShadow = true;
+baseGroup.add(padMesh);
+
+const ringMesh = new THREE.Mesh(
+  new THREE.RingGeometry(8.5, 9.5, 32),
+  new THREE.MeshBasicMaterial({ color: 0x38f28c, side: THREE.DoubleSide })
+);
+ringMesh.rotation.x = -Math.PI / 2;
+ringMesh.position.y = 0.65;
+baseGroup.add(ringMesh);
+
+const towerMesh = new THREE.Mesh(
+  new THREE.CylinderGeometry(0.4, 1.4, 24, 8),
+  new THREE.MeshStandardMaterial({ color: 0xd94343, metalness: 0.4, roughness: 0.5 })
+);
+towerMesh.position.set(14, 12, -10);
+baseGroup.add(towerMesh);
+
+const beaconMesh = new THREE.Mesh(
+  new THREE.SphereGeometry(0.9, 12, 12),
+  new THREE.MeshBasicMaterial({ color: 0x38f28c })
+);
+beaconMesh.position.set(14, 24.5, -10);
+baseGroup.add(beaconMesh);
+scene.add(baseGroup);
+
+// Trees
+const treeGroup = new THREE.Group();
+const trunkMat = new THREE.MeshStandardMaterial({ color: 0x4a3525 });
+const leavesMatNormal = new THREE.MeshStandardMaterial({ color: 0x1f4722, roughness: 0.85 });
+const leavesMatThermal = new THREE.MeshBasicMaterial({ color: 0x182b52 });
+const treeMeshes = [];
+
+for (let i = 0; i < 240; i++) {
+  const angle = Math.random() * Math.PI * 2;
+  const radius = 28 + Math.random() * 680;
+  const tx = Math.cos(angle) * radius;
+  const tz = Math.sin(angle) * radius;
+  const ty = getTerrainHeight(tx, tz);
+  if (ty > 52) continue;
+
+  const tree = new THREE.Group();
+  const scale = 0.8 + Math.random() * 0.9;
+  const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.35 * scale, 0.55 * scale, 4 * scale, 6), trunkMat);
+  trunk.position.y = 2 * scale;
+  const crown = new THREE.Mesh(new THREE.ConeGeometry(2.6 * scale, 7.5 * scale, 7), leavesMatNormal);
+  crown.position.y = 6.5 * scale;
+  tree.add(trunk, crown);
+  tree.position.set(tx, ty, tz);
+  treeGroup.add(tree);
+  treeMeshes.push(crown);
+}
+scene.add(treeGroup);
+
+/* =========================================================
+   3. PLAYER TACTICAL DRONE
+   ========================================================= */
+const drone = {
+  pos: new THREE.Vector3(0, 18, 0),
+  vel: new THREE.Vector3(),
+  yaw: 0,
+  pitch: -0.18
+};
+
+const droneGroup = new THREE.Group();
+const bodyMat = new THREE.MeshStandardMaterial({ color: 0x1d262b, metalness: 0.65, roughness: 0.35 });
+
+const chassis = new THREE.Mesh(new THREE.BoxGeometry(1.4, 0.35, 1.8), bodyMat);
+chassis.castShadow = true;
+droneGroup.add(chassis);
+
+const gunPod = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.15, 1.1, 8), bodyMat);
+gunPod.rotation.x = Math.PI / 2;
+gunPod.position.set(0, -0.25, -0.4);
+droneGroup.add(gunPod);
+
+const rotors = [];
+const armOffsets = [
+  [-1.05, 0.1, -1.05],
+  [ 1.05, 0.1, -1.05],
+  [-1.05, 0.1,  1.05],
+  [ 1.05, 0.1,  1.05]
+];
+armOffsets.forEach(([ax, ay, az], idx) => {
+  const arm = new THREE.Mesh(new THREE.BoxGeometry(1.4, 0.08, 0.12), bodyMat);
+  arm.position.set(ax * 0.5, ay, az * 0.5);
+  arm.rotation.y = idx === 0 || idx === 3 ? Math.PI / 4 : -Math.PI / 4;
+  droneGroup.add(arm);
+
+  const rotor = new THREE.Mesh(
+    new THREE.BoxGeometry(1.15, 0.02, 0.11),
+    new THREE.MeshBasicMaterial({ color: 0x9ab0ba, transparent: true, opacity: 0.75 })
+  );
+  rotor.position.set(ax, ay + 0.12, az);
+  droneGroup.add(rotor);
+  rotors.push(rotor);
+
+  const navLed = new THREE.Mesh(
+    new THREE.SphereGeometry(0.07, 6, 6),
+    new THREE.MeshBasicMaterial({ color: az < 0 ? 0xff3b4e : 0x38f28c })
+  );
+  navLed.position.set(ax, ay - 0.05, az);
+  droneGroup.add(navLed);
+});
+
+scene.add(droneGroup);
+
+/* =========================================================
+   4. WILDLIFE TARGETS (Rabbits, Foxes, Mountain Deer)
+   ========================================================= */
+const animals = [];
+const animalTypes = [
+  { type: 'TAVŞAN', reward: 45, speed: 6.5, size: 0.85, color: 0xc2b29b, minH: 0, maxH: 34, hitRadius: 1.5 },
+  { type: 'KIZIL TİLKİ', reward: 85, speed: 9.0, size: 1.25, color: 0xc95b2b, minH: 8, maxH: 52, hitRadius: 1.9 },
+  { type: 'DAĞ GEYİĞİ', reward: 140, speed: 10.5, size: 1.85, color: 0x7d5836, minH: 22, maxH: 88, hitRadius: 2.4 }
+];
+
+function createAnimalMesh(spec) {
+  const g = new THREE.Group();
+  const matNormal = new THREE.MeshStandardMaterial({ color: spec.color, roughness: 0.8 });
+  const matThermal = new THREE.MeshBasicMaterial({ color: 0xff5e1a });
+
+  const body = new THREE.Mesh(new THREE.BoxGeometry(0.7 * spec.size, 0.65 * spec.size, 1.35 * spec.size), matNormal);
+  body.position.y = 0.55 * spec.size;
+  body.castShadow = true;
+
+  const head = new THREE.Mesh(new THREE.BoxGeometry(0.52 * spec.size, 0.52 * spec.size, 0.62 * spec.size), matNormal);
+  head.position.set(0, 0.92 * spec.size, -0.78 * spec.size);
+
+  g.add(body, head);
+
+  if (spec.type === 'TAVŞAN') {
+    const earL = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.55, 0.14), matNormal);
+    earL.position.set(-0.14, 1.35 * spec.size, -0.75 * spec.size);
+    const earR = earL.clone();
+    earR.position.x = 0.14;
+    g.add(earL, earR);
+  } else if (spec.type === 'DAĞ GEYİĞİ') {
+    const antlerMat = new THREE.MeshStandardMaterial({ color: 0xe3d5be });
+    const antL = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.75, 0.08), antlerMat);
+    antL.position.set(-0.22, 1.55 * spec.size, -0.75 * spec.size);
+    antL.rotation.z = 0.25;
+    const antR = antL.clone();
+    antR.position.x = 0.22;
+    antR.rotation.z = -0.25;
+    g.add(antL, antR);
+  }
+
+  g.userData = { matNormal, matThermal, meshes: [body, head] };
+  return g;
+}
+
+function spawnAnimal(initial = false) {
+  const spec = animalTypes[Math.floor(Math.random() * animalTypes.length)];
+  let ax = 0, az = 0, ay = 0;
+  for (let tries = 0; tries < 25; tries++) {
+    const ang = Math.random() * Math.PI * 2;
+    const rad = (initial ? 35 : 65) + Math.random() * 520;
+    ax = Math.cos(ang) * rad;
+    az = Math.sin(ang) * rad;
+    ay = getTerrainHeight(ax, az);
+    if (ay >= spec.minH && ay <= spec.maxH) break;
+  }
+
+  const mesh = createAnimalMesh(spec);
+  mesh.position.set(ax, ay, az);
+  if (state.thermal) {
+    mesh.userData.meshes.forEach(m => m.material = mesh.userData.matThermal);
+  }
+  scene.add(mesh);
+
+  animals.push({
+    mesh,
+    spec,
+    heading: Math.random() * Math.PI * 2,
+    turnTimer: 1 + Math.random() * 3
+  });
+}
+
+for (let i = 0; i < 28; i++) spawnAnimal(true);
+
+/* =========================================================
+   5. PROJECTILES & EXPLOSION PARTICLES
+   ========================================================= */
+const projectiles = [];
+const particles = [];
+
+function fireWeapon() {
+  if (!state.started || state.paused || state.fireCooldown > 0) return;
+  if (state.signal <= 5) {
+    showToast('SİNYAL YOK! ATEŞLEME KİLİTLİ');
+    return;
+  }
+
+  const wLvl = state.upgrades.weapon.lvl;
+  state.fireCooldown = Math.max(0.14, 0.42 - (wLvl - 1) * 0.06);
+
+  const dir = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion).normalize();
+  const startPos = (state.aiming || state.camMode === 1)
+    ? camera.position.clone().addScaledVector(dir, 1.2)
+    : drone.pos.clone().add(new THREE.Vector3(0, -0.3, 0)).addScaledVector(dir, 1.5);
+
+  const bolt = new THREE.Mesh(
+    new THREE.SphereGeometry(0.22 + wLvl * 0.04, 8, 8),
+    new THREE.MeshBasicMaterial({ color: 0xff4d5a })
+  );
+  bolt.position.copy(startPos);
+  scene.add(bolt);
+
+  projectiles.push({
+    mesh: bolt,
+    vel: dir.multiplyScalar(165 + wLvl * 28),
+    life: 2.4,
+    bonusRadius: (wLvl - 1) * 0.45
+  });
+}
+
+function spawnBurst(pos, colorHex) {
+  for (let i = 0; i < 14; i++) {
+    const p = new THREE.Mesh(
+      new THREE.BoxGeometry(0.25, 0.25, 0.25),
+      new THREE.MeshBasicMaterial({ color: colorHex })
+    );
+    p.position.copy(pos);
+    scene.add(p);
+    particles.push({
+      mesh: p,
+      vel: new THREE.Vector3((Math.random() - 0.5) * 14, Math.random() * 10 + 3, (Math.random() - 0.5) * 14),
+      life: 0.65
+    });
+  }
+}
+
+/* =========================================================
+   6. UI & INPUT CONTROLS (PC + MOBILE + ERGONOMIC TOUCH)
+   ========================================================= */
+const keys = {};
+let firingHeld = false;
+
+window.addEventListener('keydown', (e) => {
+  keys[e.code] = true;
+  if (!state.started) return;
+
+  if (e.code === 'Space') { e.preventDefault(); firingHeld = true; fireWeapon(); }
+  if (e.code === 'KeyF') toggleAim();
+  if (e.code === 'KeyT') toggleThermal();
+  if (e.code === 'KeyC') cycleCamera();
+  if (e.code === 'KeyH') openHangar();
+  if (e.code === 'KeyR') returnToBase();
+  if (e.code === 'Equal' || e.code === 'NumpadAdd' || e.code === 'KeyZ') adjustZoom(0.5);
+  if (e.code === 'Minus' || e.code === 'NumpadSubtract' || e.code === 'KeyX') adjustZoom(-0.5);
+});
+window.addEventListener('keyup', (e) => {
+  keys[e.code] = false;
+  if (e.code === 'Space') firingHeld = false;
+});
+
+// Mouse Look & Shoot on PC
+canvas.addEventListener('mousedown', (e) => {
+  if (!state.started || state.paused || state.isMobile) return;
+  if (e.button === 0) {
+    firingHeld = true;
+    fireWeapon();
+  } else if (e.button === 2) {
+    toggleAim();
+  }
+});
+window.addEventListener('mouseup', (e) => {
+  if (e.button === 0) firingHeld = false;
+});
+
+window.addEventListener('mousemove', (e) => {
+  if (!state.started || state.paused || state.isMobile) return;
+  if (e.buttons === 1 || state.aiming || document.pointerLockElement === canvas) {
+    const sens = (state.aiming ? 0.0018 : 0.0032) / Math.sqrt(state.zoom);
+    drone.yaw -= e.movementX * sens;
+    drone.pitch = THREE.MathUtils.clamp(drone.pitch - e.movementY * sens, -1.25, 0.55);
+  }
+});
+
+// Mouse Wheel Zoom (only active when aiming/scope is active)
+window.addEventListener('wheel', (e) => {
+  if (!state.started || state.paused || !state.aiming) return;
+  adjustZoom(e.deltaY < 0 ? 0.45 : -0.45);
+}, { passive: true });
+
+// Touch Drag on Canvas for Gimbal Pitch / Yaw (Single-finger camera look, blocks pinch zoom)
+let lookTouchId = null;
+let lastTouchX = 0, lastTouchY = 0;
+canvas.addEventListener('touchstart', (e) => {
+  e.preventDefault();
+  if (!state.started || state.paused) return;
+  for (const t of e.changedTouches) {
+    if (lookTouchId === null) {
+      lookTouchId = t.identifier;
+      lastTouchX = t.clientX;
+      lastTouchY = t.clientY;
+    }
+  }
+}, { passive: false });
+
+canvas.addEventListener('touchmove', (e) => {
+  e.preventDefault();
+  if (!state.started || state.paused) return;
+  for (const t of e.changedTouches) {
+    if (t.identifier === lookTouchId) {
+      const dx = t.clientX - lastTouchX;
+      const dy = t.clientY - lastTouchY;
+      lastTouchX = t.clientX;
+      lastTouchY = t.clientY;
+      const sens = (state.aiming ? 0.0032 : 0.0052) / Math.sqrt(state.zoom);
+      drone.yaw -= dx * sens;
+      drone.pitch = THREE.MathUtils.clamp(drone.pitch - dy * sens, -1.25, 0.55);
+    }
+  }
+}, { passive: false });
+
+canvas.addEventListener('touchend', (e) => {
+  for (const t of e.changedTouches) {
+    if (t.identifier === lookTouchId) lookTouchId = null;
+  }
+});
+
+// Dual Virtual Joysticks
+const joyState = {
+  left: { x: 0, y: 0, id: null },
+  right: { x: 0, y: 0, id: null }
+};
+
+function bindJoystick(baseId, knobId, side) {
+  const base = document.getElementById(baseId);
+  const knob = document.getElementById(knobId);
+
+  const updateStick = (clientX, clientY) => {
+    const rect = base.getBoundingClientRect();
+    const cx = rect.left + rect.width / 2;
+    const cy = rect.top + rect.height / 2;
+    const maxR = rect.width * 0.36;
+    let dx = clientX - cx;
+    let dy = clientY - cy;
+    const dist = Math.hypot(dx, dy);
+    if (dist > maxR) {
+      dx = (dx / dist) * maxR;
+      dy = (dy / dist) * maxR;
+    }
+    knob.style.transform = `translate(calc(-50% + ${dx}px), calc(-50% + ${dy}px))`;
+    joyState[side].x = dx / maxR;
+    joyState[side].y = dy / maxR;
+  };
+
+  const resetStick = () => {
+    joyState[side].id = null;
+    joyState[side].x = 0;
+    joyState[side].y = 0;
+    knob.style.transform = 'translate(-50%, -50%)';
+  };
+
+  base.addEventListener('touchstart', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const t = e.changedTouches[0];
+    joyState[side].id = t.identifier;
+    updateStick(t.clientX, t.clientY);
+  }, { passive: false });
+
+  base.addEventListener('touchmove', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    for (const t of e.changedTouches) {
+      if (t.identifier === joyState[side].id) {
+        updateStick(t.clientX, t.clientY);
+      }
+    }
+  }, { passive: false });
+
+  base.addEventListener('touchend', (e) => {
+    for (const t of e.changedTouches) {
+      if (t.identifier === joyState[side].id) resetStick();
+    }
+  });
+  base.addEventListener('touchcancel', resetStick);
+}
+bindJoystick('joy-left', 'knob-left', 'left');
+bindJoystick('joy-right', 'knob-right', 'right');
+
+// Zoom Controls (Active ONLY in Aim/Scope mode)
+const zoomSlider = document.getElementById('zoom-slider');
+const zoomReadout = document.getElementById('zoom-readout');
+
+function syncZoomUI() {
+  const maxZ = getMaxZoom();
+  zoomSlider.max = maxZ.toFixed(1);
+  state.zoom = THREE.MathUtils.clamp(state.zoom, 1.0, maxZ);
+  zoomSlider.value = state.zoom.toFixed(1);
+  zoomReadout.textContent = state.zoom.toFixed(1) + 'x';
+}
+
+function adjustZoom(delta) {
+  if (!state.aiming) return;
+  state.zoom = THREE.MathUtils.clamp(state.zoom + delta, 1.0, getMaxZoom());
+  syncZoomUI();
+}
+
+zoomSlider.addEventListener('input', () => {
+  state.zoom = parseFloat(zoomSlider.value);
+  zoomReadout.textContent = state.zoom.toFixed(1) + 'x';
+});
+document.getElementById('btn-zoom-in').addEventListener('click', () => adjustZoom(0.5));
+document.getElementById('btn-zoom-out').addEventListener('click', () => adjustZoom(-0.5));
+
+// Action Buttons
+function toggleAim() {
+  state.aiming = !state.aiming;
+  document.body.classList.toggle('scope-active', state.aiming);
+  document.getElementById('btn-aim').classList.toggle('active', state.aiming);
+  if (!state.aiming) {
+    state.zoom = 1.0;
+  }
+  syncZoomUI();
+}
+
+function toggleThermal() {
+  state.thermal = !state.thermal;
+  document.body.classList.toggle('thermal-active', state.thermal);
+  document.getElementById('btn-thermal').classList.toggle('active', state.thermal);
+
+  scene.background = state.thermal ? skyColorThermal : skyColorNormal;
+  scene.fog.color.copy(scene.background);
+  terrainMesh.material = state.thermal ? terrainMatThermal : terrainMatNormal;
+  treeMeshes.forEach(m => m.material = state.thermal ? leavesMatThermal : leavesMatNormal);
+  animals.forEach(a => {
+    a.mesh.userData.meshes.forEach(m => {
+      m.material = state.thermal ? a.mesh.userData.matThermal : a.mesh.userData.matNormal;
+    });
+  });
+}
+
+function cycleCamera() {
+  if (state.aiming) toggleAim();
+  state.camMode = (state.camMode + 1) % 2;
+  document.getElementById('btn-cam').textContent = state.camMode === 0 ? 'KAM: 3.ŞAHIS' : 'KAM: FPV';
+}
+
+function applyControlMode(isMob) {
+  state.isMobile = isMob;
+  document.body.classList.toggle('mobile-mode', isMob);
+  document.getElementById('btn-mode-toggle').textContent = isMob ? 'MOD: MOBİL' : 'MOD: PC';
+  document.getElementById('select-mobile').classList.toggle('selected', isMob);
+  document.getElementById('select-pc').classList.toggle('selected', !isMob);
+}
+
+function returnToBase() {
+  drone.pos.set(0, 14, 0);
+  drone.vel.set(0, 0, 0);
+  drone.yaw = 0;
+  drone.pitch = -0.15;
+  state.battery = 100;
+  state.signal = 100;
+  state.signalLostTimer = 0;
+  showToast('ÜSSE DÖNÜLDÜ • BATARYA %100');
+}
+
+// Instant tactile response with pointerdown for Aim, Thermal, Fire, Boost
+const btnAim = document.getElementById('btn-aim');
+btnAim.addEventListener('pointerdown', (e) => {
+  e.preventDefault();
+  e.stopPropagation();
+  toggleAim();
+});
+
+const btnThermal = document.getElementById('btn-thermal');
+btnThermal.addEventListener('pointerdown', (e) => {
+  e.preventDefault();
+  e.stopPropagation();
+  toggleThermal();
+});
+
+document.getElementById('btn-cam').addEventListener('click', cycleCamera);
+document.getElementById('btn-base').addEventListener('click', returnToBase);
+document.getElementById('btn-mode-toggle').addEventListener('click', () => applyControlMode(!state.isMobile));
+
+const btnFire = document.getElementById('btn-fire');
+let fireTouchId = null;
+btnFire.addEventListener('pointerdown', (e) => {
+  e.preventDefault();
+  e.stopPropagation();
+  fireTouchId = e.pointerId;
+  firingHeld = true;
+  btnFire.classList.add('firing');
+  fireWeapon();
+});
+window.addEventListener('pointerup', (e) => {
+  if (e.pointerId === fireTouchId || fireTouchId === null) {
+    firingHeld = false;
+    fireTouchId = null;
+    btnFire.classList.remove('firing');
+  }
+});
+window.addEventListener('pointercancel', () => {
+  firingHeld = false;
+  fireTouchId = null;
+  btnFire.classList.remove('firing');
+});
+
+const btnBoost = document.getElementById('btn-boost');
+btnBoost.addEventListener('pointerdown', (e) => {
+  e.preventDefault();
+  e.stopPropagation();
+  state.boosting = true;
+  btnBoost.classList.add('active');
+});
+window.addEventListener('pointerup', () => {
+  state.boosting = false;
+  btnBoost.classList.remove('active');
+});
+
+// Start Modal Setup
+applyControlMode(state.isMobile);
+document.getElementById('select-pc').addEventListener('click', () => applyControlMode(false));
+document.getElementById('select-mobile').addEventListener('click', () => applyControlMode(true));
+document.getElementById('btn-start-game').addEventListener('click', () => {
+  document.getElementById('start-modal').style.display = 'none';
+  state.started = true;
+  syncZoomUI();
+});
+
+// Hangar Modal
+function openHangar() {
+  state.paused = true;
+  if (state.aiming) toggleAim();
+  returnToBase();
+  renderHangar();
+  document.getElementById('hangar-modal').style.display = 'flex';
+}
+
+function renderHangar() {
+  document.getElementById('hangar-credits').textContent = state.credits + ' ₺';
+  const list = document.getElementById('upgrade-list');
+  list.innerHTML = '';
+
+  Object.entries(state.upgrades).forEach(([key, u]) => {
+    const maxed = u.lvl >= u.max;
+    const card = document.createElement('div');
+    card.className = 'upg-item';
+    card.innerHTML = `
+      <div>
+        <div class="upg-head">
+          <span class="upg-name">${u.name}</span>
+          <span class="upg-lvl">SVY ${u.lvl}/${u.max}</span>
+        </div>
+        <div class="upg-desc" style="margin-top:4px;">${u.desc}</div>
+      </div>
+      <button type="button" class="upg-buy-btn" ${maxed || state.credits < u.cost ? 'disabled' : ''}>
+        ${maxed ? 'MAKSİMUM SEVİYE' : `GELİŞTİR (${u.cost} ₺)`}
+      </button>
+    `;
+    card.querySelector('button').addEventListener('click', () => {
+      if (!maxed && state.credits >= u.cost) {
+        state.credits -= u.cost;
+        u.lvl++;
+        u.cost = Math.round(u.cost * 1.45);
+        syncZoomUI();
+        renderHangar();
+      }
+    });
+    list.appendChild(card);
+  });
+}
+
+document.getElementById('btn-hangar').addEventListener('click', openHangar);
+document.getElementById('btn-close-hangar').addEventListener('click', () => {
+  document.getElementById('hangar-modal').style.display = 'none';
+  state.paused = false;
+});
+
+function showToast(msg) {
+  const feed = document.getElementById('toast-feed');
+  const el = document.createElement('div');
+  el.className = 'toast-item';
+  el.textContent = msg;
+  feed.appendChild(el);
+  setTimeout(() => el.remove(), 2200);
+}
+
+/* =========================================================
+   7. MAIN SIMULATION LOOP
+   ========================================================= */
+const clock = new THREE.Clock();
+const raycaster = new THREE.Raycaster();
+
+function updateDrone(dt) {
+  let moveForward = 0;
+  let moveStrafe = 0;
+  let moveUp = 0;
+  let yawInput = 0;
+
+  if (keys['KeyW']) moveForward += 1;
+  if (keys['KeyS']) moveForward -= 1;
+  if (keys['KeyD']) moveStrafe += 1;
+  if (keys['KeyA']) moveStrafe -= 1;
+  if (keys['KeyE'] || keys['ArrowUp']) moveUp += 1;
+  if (keys['KeyQ'] || keys['ArrowDown']) moveUp -= 1;
+  if (keys['ArrowLeft']) yawInput += 1;
+  if (keys['ArrowRight']) yawInput -= 1;
+
+  if (state.isMobile) {
+    moveForward -= joyState.left.y;
+    moveStrafe += joyState.left.x;
+    moveUp -= joyState.right.y;
+    yawInput -= joyState.right.x * 1.25;
+  }
+
+  const turnSpeed = (state.aiming ? 0.9 : 1.75) / Math.sqrt(state.zoom);
+  drone.yaw += yawInput * turnSpeed * dt;
+
+  const isTurbo = state.boosting || keys['ShiftLeft'] || keys['ShiftRight'];
+  const speed = getDroneSpeed() * (isTurbo ? 1.65 : 1.0);
+
+  const forwardVec = new THREE.Vector3(-Math.sin(drone.yaw), 0, -Math.cos(drone.yaw));
+  const rightVec = new THREE.Vector3(Math.cos(drone.yaw), 0, -Math.sin(drone.yaw));
+
+  const targetVel = new THREE.Vector3()
+    .addScaledVector(forwardVec, moveForward * speed)
+    .addScaledVector(rightVec, moveStrafe * speed);
+  targetVel.y = moveUp * (speed * 0.72);
+
+  drone.vel.lerp(targetVel, Math.min(1, dt * 6.5));
+  drone.pos.addScaledVector(drone.vel, dt);
+
+  drone.pos.x = THREE.MathUtils.clamp(drone.pos.x, -820, 820);
+  drone.pos.z = THREE.MathUtils.clamp(drone.pos.z, -820, 820);
+
+  const groundY = getTerrainHeight(drone.pos.x, drone.pos.z);
+  const minAltitude = groundY + 2.2;
+  if (drone.pos.y < minAltitude) {
+    drone.pos.y = minAltitude;
+    if (drone.vel.y < 0) drone.vel.y = 0;
+  }
+  drone.pos.y = Math.min(drone.pos.y, 240);
+
+  droneGroup.position.copy(drone.pos);
+  droneGroup.rotation.y = drone.yaw;
+  droneGroup.rotation.x = THREE.MathUtils.lerp(droneGroup.rotation.x, -moveForward * 0.16, dt * 8);
+  droneGroup.rotation.z = THREE.MathUtils.lerp(droneGroup.rotation.z, -moveStrafe * 0.16, dt * 8);
+  rotors.forEach((r, i) => r.rotation.y += (i % 2 === 0 ? 1 : -1) * dt * (isTurbo ? 55 : 34));
+
+  const distToBase = Math.hypot(drone.pos.x, drone.pos.z);
+  const altAboveGround = drone.pos.y - groundY;
+  if (distToBase < 13 && altAboveGround < 6) {
+    state.battery = Math.min(100, state.battery + dt * 22);
+  } else {
+    const drain = getBatteryDrainRate() * (isTurbo ? 2.1 : 1.0);
+    state.battery = Math.max(0, state.battery - drain * dt);
+    if (state.battery <= 0) {
+      showToast('BATARYA TÜKENDİ! ACİL ÜSSE ÇEKİLDİ');
+      returnToBase();
+    }
+  }
+
+  const maxRange = getMaxSignalRange();
+  let sig = 100 * (1 - Math.max(0, distToBase - 60) / maxRange);
+
+  const midX = (drone.pos.x + 14) * 0.5;
+  const midZ = (drone.pos.z - 10) * 0.5;
+  const midTerrain = getTerrainHeight(midX, midZ);
+  const midLineY = (drone.pos.y + 24) * 0.5;
+  if (midTerrain > midLineY) {
+    sig -= Math.min(45, (midTerrain - midLineY) * 1.4);
+  }
+  state.signal = THREE.MathUtils.clamp(sig, 0, 100);
+
+  const staticEl = document.getElementById('static-overlay');
+  const warnEl = document.getElementById('warning-banner');
+  if (state.signal < 32) {
+    staticEl.style.opacity = ((32 - state.signal) / 32 * 0.78).toFixed(2);
+    warnEl.style.display = 'block';
+    warnEl.textContent = state.signal <= 4
+      ? '🚨 SİNYAL KESİLDİ! OTOMATİK DÖNÜŞ AKTİF!'
+      : `⚠️ SİNYAL ZAYIF (%${Math.round(state.signal)})! YÜKSELİN VEYA ÜSSE DÖNÜN`;
+  } else {
+    staticEl.style.opacity = '0';
+    warnEl.style.display = 'none';
+  }
+
+  if (state.signal <= 2) {
+    state.signalLostTimer += dt;
+    if (state.signalLostTimer > 2.2) {
+      showToast('SİNYAL KOPTU! GÜVENLİ DÖNÜŞ YAPILDI');
+      returnToBase();
+    }
+  } else {
+    state.signalLostTimer = 0;
+  }
+
+  document.getElementById('val-bat').textContent = Math.round(state.battery) + '%';
+  document.getElementById('bar-bat').style.width = state.battery + '%';
+  document.getElementById('bar-bat').style.background = state.battery < 25 ? 'var(--hud-red)' : 'var(--hud-green)';
+
+  document.getElementById('val-sig').textContent = Math.round(state.signal) + '%';
+  document.getElementById('bar-sig').style.width = state.signal + '%';
+  document.getElementById('bar-sig').style.background = state.signal < 32 ? 'var(--hud-red)' : 'var(--hud-green)';
+
+  document.getElementById('val-alt').textContent = Math.round(altAboveGround) + 'm';
+  document.getElementById('val-dist').textContent = Math.round(distToBase) + 'm';
+  document.getElementById('val-credits').textContent = state.credits + ' ₺';
+}
+
+function updateCamera() {
+  const targetFov = state.aiming ? (60 / state.zoom) : 62;
+  if (Math.abs(camera.fov - targetFov) > 0.05) {
+    camera.fov = THREE.MathUtils.lerp(camera.fov, targetFov, 0.25);
+    camera.updateProjectionMatrix();
+  }
+
+  const lookEuler = new THREE.Euler(drone.pitch, drone.yaw, 0, 'YXZ');
+  const lookDir = new THREE.Vector3(0, 0, -1).applyEuler(lookEuler);
+
+  if (state.aiming || state.camMode === 1) {
+    droneGroup.visible = false;
+    camera.position.copy(drone.pos).add(new THREE.Vector3(0, -0.15, 0));
+    camera.quaternion.setFromEuler(lookEuler);
+  } else {
+    droneGroup.visible = true;
+    const backOffset = new THREE.Vector3(0, 2.2, 6.4).applyAxisAngle(new THREE.Vector3(0, 1, 0), drone.yaw);
+    const camPos = drone.pos.clone().add(backOffset);
+    const camGround = getTerrainHeight(camPos.x, camPos.z) + 1.4;
+    if (camPos.y < camGround) camPos.y = camGround;
+
+    camera.position.copy(camPos);
+    const lookTarget = drone.pos.clone().addScaledVector(lookDir, 35);
+    camera.lookAt(lookTarget);
+  }
+
+  if (state.aiming) {
+    raycaster.set(camera.position, lookDir);
+    const hits = raycaster.intersectObject(terrainMesh);
+    const distStr = hits.length > 0 ? Math.round(hits[0].distance) + ' m' : '--- m';
+    document.getElementById('scope-telemetry').textContent = `MESAFE: ${distStr} | ZOOM: ${state.zoom.toFixed(1)}x`;
+  }
+}
+
+function updateAnimalsAndProjectiles(dt) {
+  for (const a of animals) {
+    a.turnTimer -= dt;
+    if (a.turnTimer <= 0) {
+      a.heading += (Math.random() - 0.5) * 2.2;
+      a.turnTimer = 1.5 + Math.random() * 3.5;
+    }
+
+    const distToDrone = a.mesh.position.distanceTo(drone.pos);
+    const spd = distToDrone < 26 ? a.spec.speed * 1.65 : a.spec.speed * 0.55;
+    if (distToDrone < 26) {
+      a.heading = Math.atan2(-(a.mesh.position.x - drone.pos.x), -(a.mesh.position.z - drone.pos.z));
+    }
+
+    a.mesh.position.x += -Math.sin(a.heading) * spd * dt;
+    a.mesh.position.z += -Math.cos(a.heading) * spd * dt;
+
+    if (Math.hypot(a.mesh.position.x, a.mesh.position.z) > 650) {
+      a.heading += Math.PI;
+    }
+
+    const gy = getTerrainHeight(a.mesh.position.x, a.mesh.position.z);
+    a.mesh.position.y = gy;
+    a.mesh.rotation.y = a.heading;
+  }
+
+  if (state.fireCooldown > 0) state.fireCooldown -= dt;
+  if (firingHeld && state.fireCooldown <= 0) fireWeapon();
+
+  for (let i = projectiles.length - 1; i >= 0; i--) {
+    const p = projectiles[i];
+    p.life -= dt;
+    p.mesh.position.addScaledVector(p.vel, dt);
+
+    let hit = false;
+    for (let j = animals.length - 1; j >= 0; j--) {
+      const a = animals[j];
+      const targetCenter = a.mesh.position.clone().add(new THREE.Vector3(0, 0.7 * a.spec.size, 0));
+      if (p.mesh.position.distanceTo(targetCenter) <= a.spec.hitRadius + p.bonusRadius) {
+        spawnBurst(targetCenter, 0xffb84d);
+        state.credits += a.spec.reward;
+        showToast(`🎯 ${a.spec.type} AVLANDI! +${a.spec.reward} ₺`);
+        scene.remove(a.mesh);
+        animals.splice(j, 1);
+        spawnAnimal(false);
+        hit = true;
+        break;
+      }
+    }
+
+    const groundH = getTerrainHeight(p.mesh.position.x, p.mesh.position.z);
+    if (hit || p.life <= 0 || p.mesh.position.y <= groundH) {
+      if (!hit && p.mesh.position.y <= groundH) spawnBurst(p.mesh.position, 0x38f28c);
+      scene.remove(p.mesh);
+      projectiles.splice(i, 1);
+    }
+  }
+
+  for (let i = particles.length - 1; i >= 0; i--) {
+    const pt = particles[i];
+    pt.life -= dt;
+    pt.vel.y -= 18 * dt;
+    pt.mesh.position.addScaledVector(pt.vel, dt);
+    pt.mesh.scale.setScalar(Math.max(0.01, pt.life));
+    if (pt.life <= 0) {
+      scene.remove(pt.mesh);
+      particles.splice(i, 1);
+    }
+  }
+}
+
+let previewAngle = 0;
+function animate() {
+  requestAnimationFrame(animate);
+  const dt = Math.min(0.05, clock.getDelta());
+
+  if (!state.started) {
+    previewAngle += dt * 0.18;
+    camera.position.set(Math.cos(previewAngle) * 75, 44, Math.sin(previewAngle) * 75);
+    camera.lookAt(0, 14, 0);
+    rotors.forEach((r, i) => r.rotation.y += (i % 2 === 0 ? 1 : -1) * dt * 25);
+    renderer.render(scene, camera);
+    return;
+  }
+
+  if (!state.paused) {
+    updateDrone(dt);
+    updateCamera();
+    updateAnimalsAndProjectiles(dt);
+  }
+
+  renderer.render(scene, camera);
+}
+
+window.addEventListener('resize', () => {
+  camera.aspect = window.innerWidth / window.innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+});
+
+animate();
+</script>
+</body>
+</html>
